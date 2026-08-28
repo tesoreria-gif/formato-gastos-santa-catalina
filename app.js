@@ -8,7 +8,10 @@ const CATEGORIAS = [
 ];
 
 const STORAGE_KEY = "santaCatalinaGastosViaje_v1";
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB
+// Las funciones serverless de Vercel limitan el cuerpo de la petición a 4.5MB;
+// en base64 eso equivale a ~3MB de archivo original. Al correr con server.js
+// (Express) localmente ese límite no aplica y se puede subir si hace falta.
+const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3MB
 
 const state = {
   header: {
@@ -422,7 +425,7 @@ async function procesarDocumento() {
     return;
   }
   if (file.size > MAX_FILE_BYTES) {
-    mostrarError("El archivo supera el tamaño máximo permitido (20MB).");
+    mostrarError("El archivo supera el tamaño máximo permitido (3MB).");
     return;
   }
 

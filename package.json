@@ -1,0 +1,16 @@
+{
+  "name": "formato-gastos-santa-catalina",
+  "version": "1.0.0",
+  "description": "Sistema de Gastos de Viaje y Escaner OCR Contable - Panificadora Santa Catalina S.A.S.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}

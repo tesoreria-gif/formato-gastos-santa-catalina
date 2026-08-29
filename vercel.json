@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/escanear-documento.js": {
-      "maxDuration": 10
+      "maxDuration": 60
     }
   }
 }

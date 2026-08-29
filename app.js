@@ -4,6 +4,7 @@ const CATEGORIAS = [
   "Combustible",
   "Hospedaje",
   "Alimentación",
+  "Descargue",
   "Otros (Peajes, Transporte, Parqueaderos)",
 ];
 
@@ -22,8 +23,10 @@ const state = {
     fechaRetorno: "",
     kmInicial: "",
     kmFinal: "",
+    saldoAnterior: "",
   },
-  gastos: [], // { id, fecha, concepto, categoria, numeroRecibo, valor, observaciones }
+  gastos: [], // { id, fecha, concepto, categoria, numeroRecibo, galones, precioGalon, valor, observaciones }
+  anticipos: [], // { id, fecha, valor, observaciones }
 };
 
 let ultimoResultadoOcr = null;
@@ -105,6 +108,20 @@ const el = {
   totalGeneral: document.getElementById("totalGeneral"),
   btnAgregarFila: document.getElementById("btnAgregarFila"),
   btnImprimir: document.getElementById("btnImprimir"),
+  btnExportarExcel: document.getElementById("btnExportarExcel"),
+  rendimientoCombustible: document.getElementById("rendimientoCombustible"),
+
+  saldoAnterior: document.getElementById("saldoAnterior"),
+  resumenSaldoAnterior: document.getElementById("resumenSaldoAnterior"),
+  resumenAnticipos: document.getElementById("resumenAnticipos"),
+  resumenGastos: document.getElementById("resumenGastos"),
+  resumenSaldoFinal: document.getElementById("resumenSaldoFinal"),
+  resumenEtiqueta: document.getElementById("resumenEtiqueta"),
+  tablaAnticipos: document.getElementById("tablaAnticipos"),
+  btnAgregarAnticipo: document.getElementById("btnAgregarAnticipo"),
+
+  dropzone: document.getElementById("dropzone"),
+  dropzoneTexto: document.getElementById("dropzoneTexto"),
 
   btnEscanear: document.getElementById("btnEscanear"),
   modalOverlay: document.getElementById("modalOverlay"),
@@ -148,6 +165,8 @@ function renderFila(gasto) {
   const tr = document.createElement("tr");
   tr.dataset.id = gasto.id;
 
+  const esCombustible = gasto.categoria === "Combustible";
+
   const tdFecha = document.createElement("td");
   tdFecha.appendChild(crearInput("fecha", "date", gasto.fecha));
 
@@ -159,6 +178,22 @@ function renderFila(gasto) {
 
   const tdRecibo = document.createElement("td");
   tdRecibo.appendChild(crearInput("numeroRecibo", "text", gasto.numeroRecibo));
+
+  const tdGalones = document.createElement("td");
+  const inputGalones = crearInput("galones", "text", gasto.galones ? String(gasto.galones) : "");
+  inputGalones.inputMode = "decimal";
+  inputGalones.disabled = !esCombustible;
+  tdGalones.appendChild(inputGalones);
+
+  const tdPrecioGalon = document.createElement("td");
+  const inputPrecioGalon = crearInput(
+    "precioGalon",
+    "text",
+    gasto.precioGalon ? String(gasto.precioGalon) : ""
+  );
+  inputPrecioGalon.inputMode = "decimal";
+  inputPrecioGalon.disabled = !esCombustible;
+  tdPrecioGalon.appendChild(inputPrecioGalon);
 
   const tdValor = document.createElement("td");
   const inputValor = crearInput("valor", "text", gasto.valor ? String(gasto.valor) : "");
@@ -178,7 +213,7 @@ function renderFila(gasto) {
   btnEliminar.title = "Eliminar fila";
   tdAcciones.appendChild(btnEliminar);
 
-  tr.append(tdFecha, tdConcepto, tdCategoria, tdRecibo, tdValor, tdObs, tdAcciones);
+  tr.append(tdFecha, tdConcepto, tdCategoria, tdRecibo, tdGalones, tdPrecioGalon, tdValor, tdObs, tdAcciones);
   return tr;
 }
 
@@ -196,6 +231,10 @@ function agregarFila(gastoParcial = {}) {
     concepto: gastoParcial.concepto || "",
     categoria: categoriaValida(gastoParcial.categoria),
     numeroRecibo: gastoParcial.numeroRecibo || "",
+    galones: gastoParcial.galones ? parseCopAmount(gastoParcial.galones) : "",
+    precioGalon: gastoParcial.precioGalon || gastoParcial.precio_galon
+      ? parseCopAmount(gastoParcial.precioGalon ?? gastoParcial.precio_galon)
+      : "",
     valor: parseCopAmount(gastoParcial.valor),
     observaciones: gastoParcial.observaciones || "",
   };
@@ -215,11 +254,106 @@ function eliminarFila(id) {
 function actualizarGasto(id, field, rawValue) {
   const gasto = state.gastos.find((g) => g.id === id);
   if (!gasto) return;
+
   if (field === "valor") {
     gasto.valor = parseCopAmount(rawValue);
-  } else {
-    gasto[field] = rawValue;
+    return;
   }
+  if (field === "galones" || field === "precioGalon") {
+    gasto[field] = parseCopAmount(rawValue);
+    if (gasto.categoria === "Combustible" && gasto.galones && gasto.precioGalon) {
+      gasto.valor = Math.round(gasto.galones * gasto.precioGalon);
+      const tr = el.tablaGastos.querySelector(`tr[data-id="${id}"]`);
+      const inputValor = tr && tr.querySelector('input[data-field="valor"]');
+      if (inputValor) inputValor.value = String(gasto.valor);
+    }
+    return;
+  }
+  if (field === "categoria") {
+    gasto.categoria = rawValue;
+    const esCombustible = rawValue === "Combustible";
+    const tr = el.tablaGastos.querySelector(`tr[data-id="${id}"]`);
+    if (tr) {
+      const inputGalones = tr.querySelector('input[data-field="galones"]');
+      const inputPrecioGalon = tr.querySelector('input[data-field="precioGalon"]');
+      if (inputGalones) inputGalones.disabled = !esCombustible;
+      if (inputPrecioGalon) inputPrecioGalon.disabled = !esCombustible;
+      if (!esCombustible) {
+        if (inputGalones) inputGalones.value = "";
+        if (inputPrecioGalon) inputPrecioGalon.value = "";
+      }
+    }
+    if (!esCombustible) {
+      gasto.galones = "";
+      gasto.precioGalon = "";
+    }
+    return;
+  }
+  gasto[field] = rawValue;
+}
+
+// ---------- Anticipos ----------
+
+function renderFilaAnticipo(anticipo) {
+  const tr = document.createElement("tr");
+  tr.dataset.id = anticipo.id;
+
+  const tdFecha = document.createElement("td");
+  tdFecha.appendChild(crearInput("fecha", "date", anticipo.fecha));
+
+  const tdValor = document.createElement("td");
+  const inputValor = crearInput("valor", "text", anticipo.valor ? String(anticipo.valor) : "");
+  inputValor.classList.add("input-valor");
+  inputValor.inputMode = "decimal";
+  tdValor.appendChild(inputValor);
+
+  const tdObs = document.createElement("td");
+  tdObs.appendChild(crearInput("observaciones", "text", anticipo.observaciones));
+
+  const tdAcciones = document.createElement("td");
+  tdAcciones.classList.add("col-acciones");
+  const btnEliminar = document.createElement("button");
+  btnEliminar.type = "button";
+  btnEliminar.className = "btn-eliminar-anticipo";
+  btnEliminar.textContent = "✕";
+  btnEliminar.title = "Eliminar anticipo";
+  tdAcciones.appendChild(btnEliminar);
+
+  tr.append(tdFecha, tdValor, tdObs, tdAcciones);
+  return tr;
+}
+
+function renderTablaAnticipos() {
+  el.tablaAnticipos.innerHTML = "";
+  for (const anticipo of state.anticipos) {
+    el.tablaAnticipos.appendChild(renderFilaAnticipo(anticipo));
+  }
+}
+
+function agregarAnticipo(parcial = {}) {
+  const anticipo = {
+    id: uid(),
+    fecha: parcial.fecha || "",
+    valor: parseCopAmount(parcial.valor),
+    observaciones: parcial.observaciones || "",
+  };
+  state.anticipos.push(anticipo);
+  el.tablaAnticipos.appendChild(renderFilaAnticipo(anticipo));
+  calculateTripForm();
+  return anticipo;
+}
+
+function eliminarAnticipo(id) {
+  state.anticipos = state.anticipos.filter((a) => a.id !== id);
+  const tr = el.tablaAnticipos.querySelector(`tr[data-id="${id}"]`);
+  if (tr) tr.remove();
+  calculateTripForm();
+}
+
+function actualizarAnticipo(id, field, rawValue) {
+  const anticipo = state.anticipos.find((a) => a.id === id);
+  if (!anticipo) return;
+  anticipo[field] = field === "valor" ? parseCopAmount(rawValue) : rawValue;
 }
 
 // ---------- Cálculos de la planilla ----------
@@ -227,16 +361,120 @@ function actualizarGasto(id, field, rawValue) {
 function calculateTripForm() {
   const kmInicial = parseFloat(el.kmInicial.value);
   const kmFinal = parseFloat(el.kmFinal.value);
+  let kmTotalNum = null;
   if (Number.isFinite(kmInicial) && Number.isFinite(kmFinal) && kmFinal >= kmInicial) {
-    el.kmTotal.value = `${kmFinal - kmInicial} km`;
+    kmTotalNum = kmFinal - kmInicial;
+    el.kmTotal.value = `${kmTotalNum} km`;
   } else {
     el.kmTotal.value = "";
   }
 
-  const total = state.gastos.reduce((sum, g) => sum + (Number(g.valor) || 0), 0);
-  el.totalGeneral.textContent = formatCOP(total);
+  const totalGastos = state.gastos.reduce((sum, g) => sum + (Number(g.valor) || 0), 0);
+  el.totalGeneral.textContent = formatCOP(totalGastos);
+
+  const totalGalones = state.gastos
+    .filter((g) => g.categoria === "Combustible")
+    .reduce((sum, g) => sum + (Number(g.galones) || 0), 0);
+  if (kmTotalNum && totalGalones > 0) {
+    el.rendimientoCombustible.textContent = `Rendimiento: ${(kmTotalNum / totalGalones).toFixed(2)} km/galón (${totalGalones} gal totales)`;
+  } else {
+    el.rendimientoCombustible.textContent = "";
+  }
+
+  const totalAnticipos = state.anticipos.reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
+  const saldoAnterior = parseCopAmount(el.saldoAnterior.value);
+  const saldoFinal = saldoAnterior + totalAnticipos - totalGastos;
+
+  el.resumenSaldoAnterior.textContent = formatCOP(saldoAnterior);
+  el.resumenAnticipos.textContent = formatCOP(totalAnticipos);
+  el.resumenGastos.textContent = formatCOP(totalGastos);
+  el.resumenSaldoFinal.textContent = formatCOP(saldoFinal);
+  el.resumenSaldoFinal.classList.toggle("saldo-positivo", saldoFinal > 0);
+  el.resumenSaldoFinal.classList.toggle("saldo-negativo", saldoFinal < 0);
+
+  if (saldoFinal > 0) {
+    el.resumenEtiqueta.textContent = "A favor de la empresa (el conductor debe reembolsar este valor).";
+  } else if (saldoFinal < 0) {
+    el.resumenEtiqueta.textContent = "A favor del conductor (la empresa debe reembolsar este valor).";
+  } else {
+    el.resumenEtiqueta.textContent = "Cuenta saldada.";
+  }
 
   guardarEstado();
+}
+
+// ---------- Exportar a Excel (.xlsx) ----------
+
+function exportarExcel() {
+  if (typeof XLSX === "undefined") {
+    mostrarError("No se pudo cargar la librería de Excel. Verifica tu conexión e intenta de nuevo.");
+    return;
+  }
+
+  const filasEncabezado = [
+    ["Panificadora Santa Catalina S.A.S. - Liquidación de Gastos de Viaje"],
+    [],
+    ["Conductor", el.conductor.value, "Placa", el.placa.value],
+    ["Ruta", el.ruta.value],
+    ["Fecha Inicio", el.fechaInicio.value, "Fecha Retorno", el.fechaRetorno.value],
+    ["Km Inicial", el.kmInicial.value, "Km Final", el.kmFinal.value, "Km Total", el.kmTotal.value],
+    [],
+  ];
+
+  const encabezadoGastos = [
+    "Fecha",
+    "Concepto",
+    "Categoría",
+    "No. Recibo",
+    "Galones",
+    "$/Galón",
+    "Valor",
+    "Observaciones",
+  ];
+  const filasGastos = state.gastos.map((g) => [
+    g.fecha,
+    g.concepto,
+    g.categoria,
+    g.numeroRecibo,
+    g.galones || "",
+    g.precioGalon || "",
+    g.valor,
+    g.observaciones,
+  ]);
+  const totalGastos = state.gastos.reduce((sum, g) => sum + (Number(g.valor) || 0), 0);
+
+  const encabezadoAnticipos = ["Fecha", "Valor", "Observaciones"];
+  const filasAnticipos = state.anticipos.map((a) => [a.fecha, a.valor, a.observaciones]);
+  const totalAnticipos = state.anticipos.reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
+
+  const saldoAnterior = parseCopAmount(el.saldoAnterior.value);
+  const saldoFinal = saldoAnterior + totalAnticipos - totalGastos;
+
+  const filas = [
+    ...filasEncabezado,
+    encabezadoGastos,
+    ...filasGastos,
+    ["", "", "", "", "", "", "TOTAL GASTOS", totalGastos],
+    [],
+    ["Anticipos Entregados"],
+    encabezadoAnticipos,
+    ...filasAnticipos,
+    ["", "", "TOTAL ANTICIPOS", totalAnticipos],
+    [],
+    ["Liquidación"],
+    ["Saldo anterior", saldoAnterior],
+    ["(+) Anticipos entregados", totalAnticipos],
+    ["(-) Total gastos operativos", totalGastos],
+    ["Saldo final", saldoFinal],
+  ];
+
+  const hoja = XLSX.utils.aoa_to_sheet(filas);
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "Liquidación");
+
+  const placa = (el.placa.value || "sin-placa").replace(/[^a-zA-Z0-9-]/g, "");
+  const fecha = el.fechaInicio.value || new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(libro, `liquidacion-viaje-${placa}-${fecha}.xlsx`);
 }
 
 // ---------- Insertar resultados de OCR en la planilla (1 clic) ----------
@@ -273,6 +511,8 @@ function insertarGastosEnPlanilla(dataOCR) {
       concepto: g.concepto || "",
       categoria: g.categoria,
       numeroRecibo: g.numero_recibo || g.numeroRecibo || "",
+      galones: g.galones,
+      precioGalon: g.precio_galon,
       valor: g.valor,
       observaciones: g.observaciones || "",
     });
@@ -301,6 +541,7 @@ function guardarEstado() {
     fechaRetorno: el.fechaRetorno.value,
     kmInicial: el.kmInicial.value,
     kmFinal: el.kmFinal.value,
+    saldoAnterior: el.saldoAnterior.value,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -320,6 +561,7 @@ function cargarEstado() {
   if (guardado && typeof guardado === "object") {
     Object.assign(state.header, guardado.header || {});
     state.gastos = Array.isArray(guardado.gastos) ? guardado.gastos : [];
+    state.anticipos = Array.isArray(guardado.anticipos) ? guardado.anticipos : [];
   }
 
   el.conductor.value = state.header.conductor || "";
@@ -329,8 +571,10 @@ function cargarEstado() {
   el.fechaRetorno.value = state.header.fechaRetorno || "";
   el.kmInicial.value = state.header.kmInicial || "";
   el.kmFinal.value = state.header.kmFinal || "";
+  el.saldoAnterior.value = state.header.saldoAnterior || "";
 
   renderTabla();
+  renderTablaAnticipos();
   if (state.gastos.length === 0) agregarFila();
   calculateTripForm();
 }
@@ -342,6 +586,7 @@ function abrirModal() {
   mostrarPasoOcr("upload");
   el.inputArchivo.value = "";
   el.btnProcesar.disabled = true;
+  actualizarTextoDropzone();
   ocultarError();
 }
 
@@ -489,7 +734,7 @@ el.tablaGastos.addEventListener("input", (event) => {
   const field = event.target.dataset.field;
   if (!field) return;
   actualizarGasto(tr.dataset.id, field, event.target.value);
-  if (field === "valor") calculateTripForm();
+  if (field === "valor" || field === "galones" || field === "precioGalon") calculateTripForm();
   else guardarEstado();
 });
 
@@ -510,7 +755,7 @@ el.tablaGastos.addEventListener("click", (event) => {
   }
 });
 
-[el.kmInicial, el.kmFinal].forEach((input) => {
+[el.kmInicial, el.kmFinal, el.saldoAnterior].forEach((input) => {
   input.addEventListener("input", calculateTripForm);
 });
 
@@ -520,7 +765,28 @@ el.tablaGastos.addEventListener("click", (event) => {
 
 el.btnAgregarFila.addEventListener("click", () => agregarFila());
 
+el.tablaAnticipos.addEventListener("input", (event) => {
+  const tr = event.target.closest("tr");
+  if (!tr) return;
+  const field = event.target.dataset.field;
+  if (!field) return;
+  actualizarAnticipo(tr.dataset.id, field, event.target.value);
+  if (field === "valor") calculateTripForm();
+  else guardarEstado();
+});
+
+el.tablaAnticipos.addEventListener("click", (event) => {
+  if (event.target.classList.contains("btn-eliminar-anticipo")) {
+    const tr = event.target.closest("tr");
+    if (tr) eliminarAnticipo(tr.dataset.id);
+  }
+});
+
+el.btnAgregarAnticipo.addEventListener("click", () => agregarAnticipo());
+
 el.btnImprimir.addEventListener("click", () => window.print());
+
+el.btnExportarExcel.addEventListener("click", exportarExcel);
 
 el.btnEscanear.addEventListener("click", abrirModal);
 el.btnCerrarModal.addEventListener("click", cerrarModal);
@@ -533,14 +799,46 @@ document.addEventListener("keydown", (event) => {
 
 el.inputArchivo.addEventListener("change", () => {
   el.btnProcesar.disabled = !(el.inputArchivo.files && el.inputArchivo.files[0]);
+  actualizarTextoDropzone();
   ocultarError();
 });
+
+["dragenter", "dragover"].forEach((evento) => {
+  el.dropzone.addEventListener(evento, (event) => {
+    event.preventDefault();
+    el.dropzone.classList.add("dropzone-activo");
+  });
+});
+
+["dragleave", "drop"].forEach((evento) => {
+  el.dropzone.addEventListener(evento, (event) => {
+    event.preventDefault();
+    el.dropzone.classList.remove("dropzone-activo");
+  });
+});
+
+el.dropzone.addEventListener("drop", (event) => {
+  const archivo = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+  if (!archivo) return;
+  el.inputArchivo.files = event.dataTransfer.files;
+  el.btnProcesar.disabled = false;
+  actualizarTextoDropzone();
+  ocultarError();
+});
+
+function actualizarTextoDropzone() {
+  const archivo = el.inputArchivo.files && el.inputArchivo.files[0];
+  el.dropzoneTexto.textContent = archivo
+    ? archivo.name
+    : "Arrastra el archivo aquí o haz clic para elegirlo";
+}
 
 el.btnProcesar.addEventListener("click", procesarDocumento);
 el.btnVolverSubir.addEventListener("click", () => {
   mostrarPasoOcr("upload");
   el.inputArchivo.value = "";
   el.btnProcesar.disabled = true;
+  actualizarTextoDropzone();
 });
 el.btnInsertar.addEventListener("click", confirmarInsercion);
 

@@ -5,20 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Formato de Gastos de Viaje - Panificadora Santa Catalina S.A.S.</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
   <div class="page">
     <header class="app-header">
       <div class="brand">
         <h1>Panificadora Santa Catalina S.A.S.</h1>
-        <p class="subtitle">Formato de Gastos de Viaje</p>
+        <p class="subtitle">Formato de Gastos de Viaje y Liquidación</p>
       </div>
       <div class="header-actions">
         <button id="btnEscanear" class="btn btn-primary" type="button">
           Escanear Documento (OCR)
         </button>
+        <button id="btnExportarExcel" class="btn btn-secondary" type="button">
+          Exportar Excel
+        </button>
         <button id="btnImprimir" class="btn btn-secondary" type="button">
-          Imprimir / Exportar
+          Imprimir
         </button>
       </div>
     </header>
@@ -66,6 +70,8 @@
             <th class="col-concepto">Concepto</th>
             <th class="col-categoria">Categoría</th>
             <th class="col-recibo">No. Recibo</th>
+            <th class="col-galones">Galones</th>
+            <th class="col-precio-galon">$/Galón</th>
             <th class="col-valor">Valor</th>
             <th class="col-obs">Observaciones</th>
             <th class="col-acciones">&nbsp;</th>
@@ -74,7 +80,7 @@
         <tbody id="tablaGastos"></tbody>
         <tfoot>
           <tr>
-            <td colspan="4" class="total-label">TOTAL GENERAL</td>
+            <td colspan="6" class="total-label">TOTAL GASTOS OPERATIVOS</td>
             <td id="totalGeneral" class="total-value">$0</td>
             <td colspan="2"></td>
           </tr>
@@ -82,6 +88,52 @@
       </table>
       <button id="btnAgregarFila" class="btn btn-outline" type="button">
         + Agregar Fila
+      </button>
+      <p id="rendimientoCombustible" class="rendimiento-hint"></p>
+    </section>
+
+    <section class="liquidacion">
+      <h2>Liquidación Financiera</h2>
+      <div class="liquidacion-grid">
+        <div class="field">
+          <label for="saldoAnterior">Saldo Anterior</label>
+          <input type="text" id="saldoAnterior" inputmode="decimal" placeholder="0" />
+        </div>
+        <div class="liquidacion-resumen">
+          <div class="resumen-fila">
+            <span>Saldo anterior</span>
+            <span id="resumenSaldoAnterior">$0</span>
+          </div>
+          <div class="resumen-fila">
+            <span>(+) Anticipos entregados</span>
+            <span id="resumenAnticipos">$0</span>
+          </div>
+          <div class="resumen-fila">
+            <span>(-) Total gastos operativos</span>
+            <span id="resumenGastos">$0</span>
+          </div>
+          <div class="resumen-fila resumen-final">
+            <span>Saldo Final</span>
+            <span id="resumenSaldoFinal">$0</span>
+          </div>
+          <p id="resumenEtiqueta" class="resumen-etiqueta"></p>
+        </div>
+      </div>
+
+      <h3>Anticipos Entregados al Conductor</h3>
+      <table class="excel-template-table anticipos-table">
+        <thead>
+          <tr>
+            <th class="col-fecha">Fecha</th>
+            <th class="col-valor">Valor</th>
+            <th class="col-obs">Observaciones</th>
+            <th class="col-acciones">&nbsp;</th>
+          </tr>
+        </thead>
+        <tbody id="tablaAnticipos"></tbody>
+      </table>
+      <button id="btnAgregarAnticipo" class="btn btn-outline" type="button">
+        + Agregar Anticipo
       </button>
     </section>
   </div>
@@ -97,9 +149,13 @@
       <div class="modal-body">
         <div id="ocrStepUpload" class="ocr-step">
           <p class="modal-hint">
-            Sube un recibo individual o una planilla de liquidación de viaje (PDF, JPG o PNG).
+            Sube (o arrastra aquí) un recibo individual o una planilla de liquidación de viaje.
+            Formatos admitidos: PDF, JPG, PNG y WEBP.
           </p>
-          <input type="file" id="inputArchivo" accept="application/pdf,image/png,image/jpeg,image/webp" />
+          <label id="dropzone" for="inputArchivo" class="dropzone">
+            <span id="dropzoneTexto">Arrastra el archivo aquí o haz clic para elegirlo</span>
+            <input type="file" id="inputArchivo" accept="application/pdf,image/png,image/jpeg,image/webp" />
+          </label>
           <div id="ocrError" class="ocr-error" hidden></div>
           <div class="modal-footer">
             <button id="btnProcesar" class="btn btn-primary" type="button" disabled>
@@ -110,7 +166,7 @@
 
         <div id="ocrStepLoading" class="ocr-step" hidden>
           <div class="spinner"></div>
-          <p>Analizando documento con Claude...</p>
+          <p>Escaneando documento con Claude...</p>
         </div>
 
         <div id="ocrStepReview" class="ocr-step" hidden>

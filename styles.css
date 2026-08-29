@@ -151,6 +151,13 @@ body {
   border-top: none;
   border-radius: 0 0 6px 6px;
   padding: 16px 20px 20px;
+  overflow-x: auto;
+}
+
+.rendimiento-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .excel-template-table {
@@ -207,7 +214,8 @@ body {
   text-align: center;
 }
 
-.btn-eliminar-fila {
+.btn-eliminar-fila,
+.btn-eliminar-anticipo {
   border: none;
   background: transparent;
   color: var(--danger);
@@ -216,8 +224,14 @@ body {
   line-height: 1;
   padding: 4px;
 }
-.btn-eliminar-fila:hover {
+.btn-eliminar-fila:hover,
+.btn-eliminar-anticipo:hover {
   color: #922b21;
+}
+
+.excel-template-table tbody input:disabled {
+  background: #f3f2f1;
+  color: var(--text-muted);
 }
 
 .total-label {
@@ -230,6 +244,107 @@ body {
   font-weight: 700;
   background: #eef3ef;
   color: var(--excel-green-dark);
+}
+
+/* ---------- Liquidación ---------- */
+
+.liquidacion {
+  background: var(--bg-card);
+  border: 1px solid var(--grid-line);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 16px 20px 20px;
+  margin-top: 20px;
+}
+
+.liquidacion h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--excel-green-dark);
+}
+
+.liquidacion h3 {
+  margin: 20px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+.liquidacion-grid {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.liquidacion-resumen {
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  padding: 12px 16px;
+  background: #f7faf8;
+}
+
+.resumen-fila {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.resumen-final {
+  border-top: 1px solid var(--grid-line);
+  margin-top: 6px;
+  padding-top: 8px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.resumen-final #resumenSaldoFinal.saldo-positivo {
+  color: var(--excel-green-dark);
+}
+.resumen-final #resumenSaldoFinal.saldo-negativo {
+  color: var(--danger);
+}
+
+.resumen-etiqueta {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.anticipos-table {
+  margin-top: 4px;
+}
+
+/* ---------- Dropzone ---------- */
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px dashed var(--grid-line);
+  border-radius: 6px;
+  padding: 28px 16px;
+  margin-top: 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.dropzone:hover,
+.dropzone-activo {
+  border-color: var(--excel-green);
+  background: #eafaf1;
+}
+.dropzone input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
 }
 
 /* ---------- Modal ---------- */
@@ -387,5 +502,8 @@ body {
   }
   .table-wrapper {
     overflow-x: auto;
+  }
+  .liquidacion-grid {
+    grid-template-columns: 1fr;
   }
 }
